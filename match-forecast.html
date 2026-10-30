@@ -1,0 +1,469 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NTRP Match Forecast</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: a club scoreboard on top (the forecast), inputs on the left, the detail stacked beneath. */
+:root{
+  --bg:#eef2f1; --surface:#ffffff; --ink:#14241f; --muted:#5b6b66; --line:#d3dcd9;
+  --court:#1f5c4a; --court-ink:#e8f3ee; --ball:#c8d93a; --lose:#b5483a; --win:#2d7a4f;
+  --display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"Source Sans 3",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1715; --surface:#17221f; --ink:#e3ece8; --muted:#93a39e; --line:#2a3834;
+  --court:#173f34; --court-ink:#e8f3ee; --ball:#d4e34c; --lose:#e07a6a; --win:#5fc28a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1715; --surface:#17221f; --ink:#e3ece8; --muted:#93a39e; --line:#2a3834;
+  --court:#173f34; --court-ink:#e8f3ee; --ball:#d4e34c; --lose:#e07a6a; --win:#5fc28a; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font:16px/1.5 var(--body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px 48px}
+.wrap{max-width:1040px;margin:0 auto;display:grid;gap:20px}
+h1{font:700 2.2rem/1 var(--display);letter-spacing:.01em;margin:0;text-transform:uppercase;text-wrap:balance}
+h2{font:700 1.25rem/1.2 var(--display);text-transform:uppercase;letter-spacing:.04em;margin:0}
+.sub{color:var(--muted);margin:6px 0 0;max-width:65ch}
+.grid{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:760px){.grid{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px;display:grid;gap:14px;min-width:0}
+label{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+.field{display:grid;gap:4px}
+input[type=number],select,input[type=text]{font:500 1.05rem var(--mono);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px;width:100%;min-width:0;min-height:44px}
+select{font-family:var(--body);font-weight:600}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--ball);outline-offset:2px}
+.seg{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{font:600 1rem var(--display);text-transform:uppercase;letter-spacing:.06em;padding:12px 9px;border:0;background:transparent;color:var(--muted);cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--court);color:var(--court-ink)}
+.side{display:grid;gap:10px;padding:12px;border-radius:8px;border:1px dashed var(--line)}
+.side h3{margin:0;font:700 .95rem var(--display);text-transform:uppercase;letter-spacing:.08em}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sides{display:grid;gap:14px}
+#f.singles .sides{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+#f.singles .pair{grid-template-columns:minmax(0,1fr)}
+.note{font-size:.85rem;color:var(--muted);margin:0}
+/* scoreboard */
+.board{background:var(--court);color:var(--court-ink);border-radius:10px;padding:18px 20px;display:grid;gap:14px;min-width:0}
+.board .eyebrow{font:600 .8rem var(--body);text-transform:uppercase;letter-spacing:.12em;opacity:.75}
+.rows{display:grid;gap:6px}
+.row{display:grid;grid-template-columns:minmax(0,1fr) repeat(3,minmax(34px,52px));align-items:center;gap:6px}
+.row .who{font:600 1.05rem var(--display);text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cell{font:700 2rem/1 var(--display);text-align:center;background:rgba(0,0,0,.22);border-radius:6px;padding:8px 0;font-variant-numeric:tabular-nums}
+.cell.w{color:var(--ball)}
+.cell.empty{opacity:.2}
+.stats{display:flex;flex-wrap:wrap;gap:8px 22px}
+.stat b{display:block;font:700 1.6rem/1.1 var(--display);font-variant-numeric:tabular-nums}
+.stat span{font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;opacity:.75}
+.verdict{font-size:.95rem;margin:0;opacity:.9}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+td,th{text-align:left;padding:6px 4px;border-bottom:1px solid var(--line)}
+th{font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+td.mono{font-family:var(--mono);font-size:.92rem}
+.bar{height:8px;border-radius:4px;background:var(--win)}
+.bar.l{background:var(--lose)}
+.pill{display:inline-block;font-size:.75rem;font-weight:600;padding:1px 8px;border-radius:99px;border:1px solid currentColor}
+.pill.w{color:var(--win)} .pill.l{color:var(--lose)}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px}
+@media (max-width:760px){.two{grid-template-columns:minmax(0,1fr)}}
+.sets{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.sc{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:3px;color:var(--muted)}
+.sc input{text-align:center;padding-inline:2px;-moz-appearance:textfield}
+.sc input::-webkit-inner-spin-button,.sc input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.big{font:700 2.2rem/1 var(--display);font-variant-numeric:tabular-nums}
+.chart svg{width:100%;height:auto;display:block}
+.chart text{fill:var(--muted);font:12px var(--body)}
+details summary{cursor:pointer;font-weight:600}
+details p,details li{max-width:70ch}
+code{font-family:var(--mono);font-size:.88em}
+/* view switch */
+.views{display:grid;grid-template-columns:1fr 1fr;max-width:420px}
+.view{display:grid;gap:20px;min-width:0}
+/* team match */
+.teamgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,360px);gap:20px;align-items:start}
+.teamgrid>.board{grid-column:2;grid-row:1;position:sticky;top:max(12px,env(safe-area-inset-top,0px))}
+.teamgrid>form{grid-column:1;grid-row:1}
+@media (max-width:760px){.teamgrid{grid-template-columns:minmax(0,1fr)}.teamgrid>.board{grid-column:1;position:static}.teamgrid>form{grid-row:2}}
+.big-win{font:700 3.4rem/1 var(--display);font-variant-numeric:tabular-nums;color:var(--ball)}
+.tdist{display:grid;gap:5px}
+.tdist .r{display:grid;grid-template-columns:3.2em minmax(0,1fr) 3em;align-items:center;gap:8px;font-variant-numeric:tabular-nums;font-size:.92rem}
+.tdist .r b{font:700 1.05rem var(--display);letter-spacing:.04em}
+.tdist .track{height:10px;border-radius:5px;background:rgba(0,0,0,.22)}
+.tdist .fill{height:100%;border-radius:5px;background:var(--ball)}
+.tdist .r.l .fill{background:rgba(232,243,238,.45)}
+.courts{display:grid;gap:12px}
+.court{border:1px solid var(--line);border-radius:8px;padding:12px;display:grid;gap:10px;min-width:0}
+.court-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.court-head h3{margin:0;font:700 1.1rem var(--display);text-transform:uppercase;letter-spacing:.06em}
+.seg.mini{grid-template-columns:auto auto}
+.seg.mini button{padding:8px 12px;font-size:.85rem;min-height:36px}
+.court-sides{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.court-sides .side{padding:10px}
+.court-res{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px;font-variant-numeric:tabular-nums}
+.court-res .score{font:500 .95rem var(--mono)}
+.court-res .wp{font:700 1.15rem var(--display);min-width:3ch;text-align:right}
+.court-res .track{height:8px;border-radius:4px;background:var(--lose);overflow:hidden}
+.court-res .fill{height:100%;background:var(--win)}
+.court .pair{grid-template-columns:minmax(0,1fr)}
+.court.dbl .pair{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+@media (max-width:420px){.court.dbl .court-sides{grid-template-columns:minmax(0,1fr)}.court{padding:10px}.court-sides{gap:8px}.court-sides .side{padding:8px}.court-sides input{padding-inline:6px}}
+.tbar{display:none}
+@media (max-width:760px){
+  .tbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:5;justify-content:space-between;align-items:center;gap:12px;
+    background:var(--court);color:var(--court-ink);border-top:1px solid rgba(0,0,0,.25);
+    padding:10px max(16px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));
+    font:600 1rem var(--display);text-transform:uppercase;letter-spacing:.06em;transition:transform .2s}
+  .tbar b{color:var(--ball);font-size:1.3rem}
+  .tbar.away{transform:translateY(110%)}
+  #view-team{padding-bottom:64px}
+}
+@media (prefers-reduced-motion:reduce){.tbar{transition:none}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>NTRP Match Forecast</h1>
+    <p class="sub">Enter TennisRecord ratings to see the likely score, your chance of winning, and the score you need to hold your rating.</p>
+  </header>
+
+  <div class="seg views" role="group" aria-label="View">
+    <button type="button" id="v-one" aria-pressed="true">One match</button>
+    <button type="button" id="v-team" aria-pressed="false">Team match</button>
+  </div>
+
+  <div class="view" id="view-one">
+  <div class="grid">
+    <form class="panel singles" id="f" autocomplete="off">
+      <div class="seg" role="group" aria-label="Match type">
+        <button type="button" id="m-s" aria-pressed="true">Singles</button>
+        <button type="button" id="m-d" aria-pressed="false">Doubles</button>
+      </div>
+      <div class="sides">
+      <div class="side">
+        <h3>Your side</h3>
+        <div class="pair">
+          <div class="field"><label for="you">You</label><input id="you" type="number" inputmode="decimal" step="0.01" min="1" max="7" value="3.52"></div>
+          <div class="field dbl" hidden><label for="part">Partner</label><input id="part" type="number" inputmode="decimal" step="0.01" min="1" max="7" value="3.38"></div>
+        </div>
+      </div>
+      <div class="side">
+        <h3>Opponents</h3>
+        <div class="pair">
+          <div class="field"><label for="o1">Opponent 1</label><input id="o1" type="number" inputmode="decimal" step="0.01" min="1" max="7" value="3.71"></div>
+          <div class="field dbl" hidden><label for="o2">Opponent 2</label><input id="o2" type="number" inputmode="decimal" step="0.01" min="1" max="7" value="3.44"></div>
+        </div>
+      </div>
+      </div>
+      <div class="field"><label for="third">Third set</label>
+        <select id="third"><option value="mtb">Match tiebreak (USTA league)</option><option value="set">Full third set</option></select>
+      </div>
+      <p class="note" id="gapnote"></p>
+    </form>
+
+    <div style="display:grid;gap:20px;min-width:0">
+      <section class="board" aria-live="polite">
+        <div class="eyebrow" id="eyebrow">Projected score</div>
+        <div class="rows">
+          <div class="row"><div class="who" id="nameA">You</div><div class="cell" id="a1"></div><div class="cell" id="a2"></div><div class="cell empty" id="a3"></div></div>
+          <div class="row"><div class="who" id="nameB">Them</div><div class="cell" id="b1"></div><div class="cell" id="b2"></div><div class="cell empty" id="b3"></div></div>
+        </div>
+        <div class="stats">
+          <div class="stat"><b id="s-win"></b><span>Your win chance</span></div>
+          <div class="stat"><b id="s-share"></b><span>Your expected games</span></div>
+          <div class="stat"><b id="s-gap"></b><span>Rating gap</span></div>
+        </div>
+        <p class="verdict" id="verdict"></p>
+        <p class="verdict" id="hold"></p>
+      </section>
+
+      <section class="panel">
+        <h2>How it could go</h2>
+        <div style="overflow-x:auto"><table id="dist"><thead><tr><th>Outcome</th><th>Chance</th><th style="width:45%"></th></tr></thead><tbody></tbody></table></div>
+        <p class="note" id="range"></p>
+      </section>
+    </div>
+  </div>
+
+  <div class="two">
+    <section class="panel">
+      <h2>What a result would do to your rating</h2>
+      <p class="note">Your games on the left. Leave set 3 empty for a two-set match. A match tiebreak counts as one game, the way TennisRecord counts it.</p>
+      <div class="sets">
+        <div class="field"><label for="r1a">Set 1</label><div class="sc"><input id="r1a" type="number" inputmode="numeric" min="0" max="20" value="6" aria-label="Set 1, your games"><span>–</span><input id="r1b" type="number" inputmode="numeric" min="0" max="20" value="4" aria-label="Set 1, their games"></div></div>
+        <div class="field"><label for="r2a">Set 2</label><div class="sc"><input id="r2a" type="number" inputmode="numeric" min="0" max="20" value="3" aria-label="Set 2, your games"><span>–</span><input id="r2b" type="number" inputmode="numeric" min="0" max="20" value="6" aria-label="Set 2, their games"></div></div>
+        <div class="field"><label for="r3a">Set 3 / TB</label><div class="sc"><input id="r3a" type="number" inputmode="numeric" min="0" max="20" value="10" aria-label="Set 3 / TB, your games"><span>–</span><input id="r3b" type="number" inputmode="numeric" min="0" max="20" value="7" aria-label="Set 3 / TB, their games"></div></div>
+      </div>
+      <div><div class="big" id="mr"></div><p class="note" id="mrnote"></p></div>
+    </section>
+    <section class="panel chart">
+      <h2>Rating gap vs. share of games</h2>
+      <div id="chart"></div>
+      <p class="note"><b>Solid line:</b> what actually happens, fitted to 1,205 real Texas league matches (dots are the averages). <b>Dashed line:</b> TennisRecord's expectation, the share you need to hold your rating. The yellow dot is your matchup.</p>
+    </section>
+  </div>
+  </div>
+
+  <div class="view teamgrid" id="view-team" hidden>
+    <section class="board" aria-live="polite">
+      <div class="eyebrow" id="t-eyebrow">Team match · 5 courts</div>
+      <div><div class="big-win" id="t-win"></div><div class="stat"><span>Chance your team wins the match</span></div></div>
+      <div class="stats">
+        <div class="stat"><b id="t-exp"></b><span>Expected courts won</span></div>
+        <div class="stat"><b id="t-likely"></b><span>Most likely result</span></div>
+      </div>
+      <div class="tdist" id="t-dist"></div>
+      <p class="verdict" id="t-verdict"></p>
+    </section>
+    <form class="panel" id="tf" autocomplete="off">
+      <div class="seg" role="group" aria-label="Number of courts">
+        <button type="button" id="t-3" aria-pressed="false">3 courts</button>
+        <button type="button" id="t-5" aria-pressed="true">5 courts</button>
+      </div>
+      <div class="field"><label for="tthird">Third set</label>
+        <select id="tthird"><option value="mtb">Match tiebreak (USTA league)</option><option value="set">Full third set</option></select>
+      </div>
+      <p class="note">Example lineups are filled in. Enter your team's and the other team's ratings on each court, and switch any court between singles and doubles.</p>
+      <div class="courts" id="courts"></div>
+    </form>
+    <div class="tbar away" id="tbar" aria-hidden="true"><span>Team win <b id="tb-win"></b></span><span id="tb-likely"></span></div>
+  </div>
+
+  <section class="panel">
+    <details>
+      <summary>How this works, and how sure we can be</summary>
+      <p>TennisRecord doesn't publish its formula. Players on the Tennis Warehouse forums matched its numbers against real results and reconstructed the core rule:</p>
+      <ul>
+        <li><b>Match rating = opponent's rating ± a value from your share of games.</b> Winning 6-4 6-4 (60% of games) is worth +0.10, 6-3 6-3 (67%) is +0.20, 6-1 6-1 (86%) is +0.38, and 6-0 6-0 caps out at +0.48. Your own rating doesn't enter into it.</li>
+        <li><b>Only games count, summed across sets.</b> A match tiebreak counts as one game, so 6-3 0-6 0-1 is 6-10 in games.</li>
+        <li><b>Doubles:</b> the team's result is compared against the team's combined rating, and any over- or under-performance is split equally between partners, so the gap between partners stays the same. This page compares team averages.</li>
+        <li><b>The forecast is fitted to real results, not to TennisRecord's table.</b> I tested the table against 1,205 USTA league matches from TennisRecord (Austin and Dallas, 2025–26). It's right for small gaps, but favorites win fewer games than it implies once the gap passes about 0.2. At a 0.4 gap the table says the favorite takes 85% of games, but in practice it's about 70%. So the headline score uses a curve fitted to those matches, and the "to hold your rating" line shows the table's number.</li>
+        <li><b>Accuracy:</b> the favorite won 74% of the matches. The fitted score is off by about 2.4 games per match on average, and individual matches swing about 3 games either way. Win chances lined up with real results within a few points in every gap range.</li>
+        <li><b>Dynamic rating:</b> the new match rating is averaged with recent ones (roughly the last three or so). This part is the least certain, so this page doesn't try to predict your next dynamic rating.</li>
+      </ul>
+      <p>Running the table backwards gives TennisRecord's expectation: a gap of 0.20 means the stronger side must win two-thirds of the games (6-3 6-3) to hold its rating. Beyond a gap of about 0.48 the table runs out, and even a 6-0 6-0 win can lower the stronger player's rating.</p>
+      <p>In the same 1,205 matches, this page's reconstruction reproduced TennisRecord's published match rating within 0.01 for 85% of player-matches and within 0.03 for 90%.</p>
+      <p>The table is reverse-engineered and occasionally off by about 0.01. Posters also saw bigger mismatches when players were 0.5 or more apart. TennisRecord re-centers everyone at year end, so ratings near January can jump.</p>
+    </details>
+  </section>
+</div>
+
+<script>
+// TennisRecord score table, reconstructed by forum users: [share of games won, rating value]
+const TBL=[[.5,0],[.526,.03],[.546,.05],[.565,.06],[.571,.07],[.579,.09],[.6,.10],[.619,.13],[.632,.15],[.648,.17],[.667,.20],[.706,.24],[.75,.29],[.8,.33],[.857,.38],[.923,.43],[1,.48]];
+const CAP=.48;
+function valueFromShare(p){
+  if(p<.5)return -valueFromShare(1-p);
+  for(let i=1;i<TBL.length;i++){const[a,va]=TBL[i-1],[b,vb]=TBL[i];if(p<=b)return va+(vb-va)*(p-a)/(b-a)}
+  return CAP;
+}
+function shareFromGap(d){
+  if(d<0)return 1-shareFromGap(-d);
+  if(d>=CAP)return 1;
+  let lo=.5,hi=1;for(let i=0;i<50;i++){const m=(lo+hi)/2;valueFromShare(m)<d?lo=m:hi=m}
+  return (lo+hi)/2;
+}
+// Point model: player wins each point with probability s
+function gameP(s){const t=1-s;return s**4*(1+4*t+10*t*t)+20*s**3*t**3*s*s/(s*s+t*t)}
+function raceP(s,n){const t=1-s,deuce=s*s/(s*s+t*t),memo={};
+  const f=(a,b)=>{if(a>=n&&a-b>=2)return 1;if(b>=n&&b-a>=2)return 0;if(a===b&&a>=n-1)return deuce;
+    const k=a+','+b;if(k in memo)return memo[k];return memo[k]=s*f(a+1,b)+t*f(a,b+1)};
+  return f(0,0);
+}
+function setDist(g,tb){const out=[],P={'0,0':1};
+  for(let tot=0;tot<=13;tot++)for(let a=0;a<=tot;a++){const b=tot-a,p=P[a+','+b];if(!p)continue;
+    if((a>=6||b>=6)&&Math.abs(a-b)>=2){out.push([a,b,p]);continue}
+    if(a===7||b===7){out.push([a,b,p]);continue}
+    if(a===6&&b===6){P['7,6']=(P['7,6']||0)+p*tb;P['6,7']=(P['6,7']||0)+p*(1-tb);continue}
+    P[(a+1)+','+b]=(P[(a+1)+','+b]||0)+p*g;P[a+','+(b+1)]=(P[a+','+(b+1)]||0)+p*(1-g);}
+  return out;
+}
+function matchDist(s,third){
+  const S=setDist(gameP(s),raceP(s,7));
+  const T=third==='mtb'?(()=>{const m=raceP(s,10);return[[1,0,m],[0,1,1-m]]})():S;
+  const res=[];
+  for(const x of S)for(const y of S){const p=x[2]*y[2],w1=x[0]>x[1],w2=y[0]>y[1];
+    if(w1===w2)res.push({sets:[x,y],p,win:w1});
+    else for(const z of T)res.push({sets:[x,y,z],p:p*z[2],win:z[0]>z[1]});}
+  for(const r of res){r.gw=r.sets.reduce((a,c)=>a+c[0],0);r.gl=r.sets.reduce((a,c)=>a+c[1],0);r.share=r.gw/(r.gw+r.gl)}
+  return res;
+}
+const expShare=d=>d.reduce((a,r)=>a+r.p*r.share,0);
+function calibrate(target,third){
+  if(target<.5)return 1-calibrate(1-target,third);
+  target=Math.min(target,.985);
+  let lo=.5,hi=.995;for(let i=0;i<40;i++){const m=(lo+hi)/2;expShare(matchDist(m,third))<target?lo=m:hi=m}
+  return (lo+hi)/2;
+}
+// Share of games actually won, fitted to 1,205 TennisRecord league matches (2025-26):
+// share = 1/(1+e^(-2.6*gap)). Flatter than the rating table once the gap passes ~0.2.
+const FIT_K=2.6;
+const realShare=g=>1/(1+Math.exp(-FIT_K*g));
+// Blend over a spread of "on the day" gaps; DAY_SD tuned so win chances match the same matches.
+const DAY_SD=.14;
+function forecast(gap,third){
+  const zs=[-2.5,-2,-1.5,-1,-.5,0,.5,1,1.5,2,2.5],ws=zs.map(z=>Math.exp(-z*z/2)),W=ws.reduce((a,b)=>a+b,0),out=[];
+  zs.forEach((z,i)=>{const sh=realShare(gap+z*DAY_SD),d=matchDist(calibrate(sh,third),third);
+    for(const r of d)out.push({...r,p:r.p*ws[i]/W})});
+  return out;
+}
+// Straight-sets scoreline closest to a share of games, for the favorite
+const SETS=[[6,0],[6,1],[6,2],[6,3],[6,4],[7,5],[7,6]];
+function typicalScore(p){let best=null;
+  for(const a of SETS)for(const b of SETS){if(SETS.indexOf(b)<SETS.indexOf(a))continue;
+    const sh=(a[0]+b[0])/(a[0]+a[1]+b[0]+b[1]),e=Math.abs(sh-p)+1e-4*Math.abs(a[1]-b[1]);if(!best||e<best.e)best={e,sets:[a,b]}}
+  return best.sets;
+}
+
+const $=id=>document.getElementById(id);
+let mode='s';
+const num=id=>{const v=parseFloat($(id).value);return isFinite(v)?v:null};
+function sides(){
+  if(mode==='s')return{me:num('you'),us:num('you'),them:num('o1')};
+  const y=num('you'),p=num('part'),a=num('o1'),b=num('o2');
+  if([y,p,a,b].includes(null))return{me:null};
+  return{me:y,us:(y+p)/2,them:(a+b)/2};
+}
+const fmt=(x,d=2)=>(x>0?'+':x<0?'−':'')+Math.abs(x).toFixed(d);
+const pct=x=>(x*100).toFixed(x>.995||x<.005?1:0)+'%';
+
+function render(){
+  const s=sides();
+  if(s.me===null||s.them===null){$('verdict').textContent='Enter every rating to see a forecast.';return}
+  const gap=s.us-s.them, share=realShare(gap), hold=shareFromGap(gap), third=$('third').value;
+  const dist=forecast(gap,third), win=dist.reduce((a,r)=>a+(r.win?r.p:0),0);
+  $('nameA').textContent=mode==='s'?'You':'Us';$('nameB').textContent='Them';
+  // headline
+  const fav=share>=.5, ts=typicalScore(fav?share:1-share).map(x=>fav?x:[x[1],x[0]]);
+  [1,2].forEach(i=>{const[a,b]=ts[i-1];$('a'+i).textContent=a;$('b'+i).textContent=b;
+    $('a'+i).className='cell'+(a>b?' w':'');$('b'+i).className='cell'+(b>a?' w':'')});
+  $('a3').textContent='–';$('b3').textContent='–';
+  $('s-win').textContent=pct(win);$('s-share').textContent=pct(share);$('s-gap').textContent=fmt(gap);
+  const ag=Math.abs(gap);
+  $('eyebrow').textContent=ag<.02?'Projected score · toss-up':'Projected score';
+  $('verdict').textContent=ag<.02?'Dead even on paper. Expect tiebreaks or a third set either way.'
+    :gap>0?`You're favored, and in similar real matches the favorite won about ${pct(share)} of the games.`:`You're the underdog, and in similar real matches the underdog won about ${pct(share)} of the games.`;
+  const hs=typicalScore(hold>=.5?hold:1-hold).map(x=>hold>=.5?x.join('-'):x[1]+'-'+x[0]).join(' ');
+  $('hold').textContent=ag<.02?'To hold your rating, win at least half the games.'
+    :ag>=CAP?(gap>0?'To hold your rating, TennisRecord expects 6-0 6-0. Even that may not raise it.':'TennisRecord expects you to win no games, so any game you win helps your rating.')
+    :`To hold your rating, TennisRecord expects ${hs} (${pct(hold)} of games). ${gap>0?(hold>share+.02?'That is harder than a typical result at this gap.':''):(hold<share-.02?'A typical result here would beat that.':'')}`;
+  $('gapnote').textContent=mode==='d'?`Team averages: yours ${s.us.toFixed(3)}, theirs ${s.them.toFixed(3)}.`:'';
+  // outcome buckets
+  const B=[['Win in straight sets',r=>r.win&&r.sets.length===2,1],['Win in a third set',r=>r.win&&r.sets.length===3,1],
+    ['Lose in a third set',r=>!r.win&&r.sets.length===3,0],['Lose in straight sets',r=>!r.win&&r.sets.length===2,0]]
+    .map(([k,fn,w])=>({k,w,p:dist.filter(fn).reduce((a,r)=>a+r.p,0)})),mx=Math.max(...B.map(x=>x.p));
+  $('dist').tBodies[0].innerHTML=B.map(r=>`<tr><td>${r.k}</td><td>${pct(r.p)}</td><td><div class="bar ${r.w?'':'l'}" style="width:${(r.p/mx*100).toFixed(1)}%"></div></td></tr>`).join('');
+  // middle 80% of your share of games, shown as straight-sets scores
+  const sorted=dist.slice().sort((a,b)=>a.share-b.share);let c=0,lo=null,hi=null;
+  for(const r of sorted){c+=r.p;if(lo===null&&c>=.1)lo=r.share;if(hi===null&&c>=.9)hi=r.share}
+  const asScore=p=>typicalScore(p>=.5?p:1-p).map(x=>p>=.5?x.join('-'):x[1]+'-'+x[0]).join(' ');
+  $('range').textContent=`Most days (8 in 10) you'd win between ${pct(lo)} and ${pct(hi)} of the games, roughly ${asScore(lo)} at the low end to ${asScore(hi)} at the high end.`;
+  drawChart(gap,share,hold);
+  renderResult();
+}
+
+function renderResult(){
+  const s=sides();if(s.me===null)return;
+  const sets=[1,2,3].map(n=>{const a=$('r'+n+'a').value.trim(),b=$('r'+n+'b').value.trim();
+    if(!a&&!b)return'skip';const x=parseInt(a,10),y=parseInt(b,10);return x>=0&&y>=0?[x,y]:null});
+  if(sets.includes(null)){$('mr').textContent='—';$('mrnote').textContent='Fill in both sides of each set you played.';return}
+  let gw=0,gl=0;sets.forEach((x,i)=>{if(x==='skip')return;
+    if(i===2&&(x[0]>=10||x[1]>=10)&&$('third').value==='mtb'){x[0]>x[1]?gw++:gl++}else{gw+=x[0];gl+=x[1]}});
+  if(gw+gl===0){$('mr').textContent='—';$('mrnote').textContent='Enter at least one set.';return}
+  const v=valueFromShare(gw/(gw+gl)),teamMR=s.them+v,mr=s.me+(teamMR-s.us),d=mr-s.me;
+  $('mr').textContent=mr.toFixed(2);
+  $('mrnote').textContent=`Counted as ${gw}-${gl} in games (${pct(gw/(gw+gl))}), worth ${fmt(v)} against ${mode==='s'?'your opponent':'their team average'}. That is ${fmt(d)} versus your current rating, so it would pull your dynamic rating ${Math.abs(d)<.005?'nowhere':d>0?'up':'down'}.`;
+}
+
+const OBS=[[.025,.502],[.075,.565],[.125,.570],[.175,.632],[.25,.664],[.375,.702],[.55,.787]];
+function drawChart(gap,share,hold){
+  const W=Math.round(Math.max(280,Math.min(460,$('chart').clientWidth||460))),H=Math.max(200,Math.round(W*.5)),L=44,R=12,T=12,B=36,x=g=>L+(g+.6)/1.2*(W-L-R),y=p=>T+(1-p)*(H-T-B);
+  let path='',fit='';for(let g=-.6;g<=.6001;g+=.01){path+=(path?'L':'M')+x(g).toFixed(1)+' '+y(shareFromGap(g)).toFixed(1);fit+=(fit?'L':'M')+x(g).toFixed(1)+' '+y(realShare(g)).toFixed(1)}
+  const dots=OBS.flatMap(([g,p])=>[[g,p],[-g,1-p]]).map(([g,p])=>`<circle cx="${x(g)}" cy="${y(p)}" r="3.5" fill="var(--win)" opacity=".55"/>`).join('');
+  const gx=[-.6,-.4,-.2,0,.2,.4,.6],gy=[0,.25,.5,.75,1];
+  const cg=Math.max(-.6,Math.min(.6,gap));
+  $('chart').innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Share of games by rating gap">
+  ${gy.map(p=>`<line x1="${L}" x2="${W-R}" y1="${y(p)}" y2="${y(p)}" stroke="var(--line)"/><text x="${L-6}" y="${y(p)+4}" text-anchor="end">${p*100}%</text>`).join('')}
+  ${gx.map(g=>`<text x="${x(g)}" y="${H-B+18}" text-anchor="middle">${g>0?'+':''}${g.toFixed(1)}</text>`).join('')}
+  <text x="${(L+W-R)/2}" y="${H-2}" text-anchor="middle">Your rating minus theirs</text>
+  <path d="${path}" fill="none" stroke="var(--muted)" stroke-width="2" stroke-dasharray="6 4"/>
+  ${dots}<path d="${fit}" fill="none" stroke="var(--win)" stroke-width="2.5"/>
+  <line x1="${x(cg)}" x2="${x(cg)}" y1="${T}" y2="${H-B}" stroke="var(--muted)" stroke-dasharray="3 3"/>
+  <circle cx="${x(cg)}" cy="${y(realShare(cg))}" r="6" fill="var(--ball)" stroke="var(--ink)" stroke-width="1.5"/></svg>`;
+}
+
+function setMode(m){mode=m;$('f').classList.toggle('singles',m==='s');$('m-s').setAttribute('aria-pressed',m==='s');$('m-d').setAttribute('aria-pressed',m==='d');
+  document.querySelectorAll('.dbl').forEach(e=>e.hidden=m!=='d');render()}
+$('m-s').onclick=()=>setMode('s');$('m-d').onclick=()=>setMode('d');
+$('f').addEventListener('input',render);$('f').addEventListener('submit',e=>e.preventDefault());
+['r1a','r1b','r2a','r2b','r3a','r3b'].forEach(id=>$(id).addEventListener('input',renderResult));
+// ---------- Team match ----------
+const fcCache=new Map();
+function courtWin(gap,third){const k=gap.toFixed(3)+third;
+  if(!fcCache.has(k)){const d=forecast(gap,third);fcCache.set(k,d.reduce((a,r)=>a+(r.win?r.p:0),0))}
+  return fcCache.get(k)}
+const TEAM={n:5,lineups:{
+  3:[{t:'D',us:[3.55,3.42],them:[3.60,3.38]},{t:'D',us:[3.47,3.35],them:[3.41,3.36]},{t:'D',us:[3.30,3.28],them:[3.38,3.25]}],
+  5:[{t:'S',us:[3.68,null],them:[3.52,null]},{t:'S',us:[3.41,null],them:[3.50,null]},
+     {t:'D',us:[3.58,3.49],them:[3.62,3.55]},{t:'D',us:[3.47,3.40],them:[3.33,3.36]},{t:'D',us:[3.31,3.28],them:[3.35,3.22]}]}};
+const courtLabel=(c,i,all)=>{const n=all.slice(0,i+1).filter(x=>x.t===c.t).length;return (c.t==='S'?'Singles ':'Doubles ')+n};
+const rIn=(id,v,lab)=>`<div class="field"><label for="${id}">${lab}</label><input id="${id}" type="number" inputmode="decimal" step="0.01" min="1" max="7" value="${v??''}"></div>`;
+function buildCourts(){
+  const L=TEAM.lineups[TEAM.n];
+  $('courts').innerHTML=L.map((c,i)=>`<div class="court${c.t==='D'?' dbl':''}" id="c${i}">
+    <div class="court-head"><h3 id="c${i}-name">${courtLabel(c,i,L)}</h3>
+      <div class="seg mini" role="group" aria-label="Court ${i+1} type"><button type="button" data-c="${i}" data-t="S" aria-pressed="${c.t==='S'}">Singles</button><button type="button" data-c="${i}" data-t="D" aria-pressed="${c.t==='D'}">Doubles</button></div></div>
+    <div class="court-sides">
+      <div class="side"><h3>Us</h3><div class="pair">${rIn(`c${i}u0`,c.us[0],c.t==='S'?'Player':'Player 1')}${c.t==='D'?rIn(`c${i}u1`,c.us[1],'Player 2'):''}</div></div>
+      <div class="side"><h3>Them</h3><div class="pair">${rIn(`c${i}t0`,c.them[0],c.t==='S'?'Player':'Player 1')}${c.t==='D'?rIn(`c${i}t1`,c.them[1],'Player 2'):''}</div></div>
+    </div>
+    <div class="court-res"><span class="score" id="c${i}-score"></span><div class="track"><div class="fill" id="c${i}-bar"></div></div><span class="wp" id="c${i}-wp"></span></div>
+  </div>`).join('');
+  $('t-3').setAttribute('aria-pressed',TEAM.n===3);$('t-5').setAttribute('aria-pressed',TEAM.n===5);
+  renderTeam();
+}
+function readCourts(){
+  TEAM.lineups[TEAM.n].forEach((c,i)=>{const g=id=>{const el=$(id);if(!el)return null;const v=parseFloat(el.value);return isFinite(v)?v:null};
+    c.us=[g(`c${i}u0`),c.t==='D'?g(`c${i}u1`):c.us[1]];c.them=[g(`c${i}t0`),c.t==='D'?g(`c${i}t1`):c.them[1]]});
+}
+function renderTeam(){
+  const L=TEAM.lineups[TEAM.n],third=$('tthird').value,ps=[];
+  L.forEach((c,i)=>{
+    const us=c.t==='S'?[c.us[0]]:c.us,th=c.t==='S'?[c.them[0]]:c.them;
+    if(us.concat(th).some(v=>v==null)){$(`c${i}-score`).textContent='Enter all ratings';$(`c${i}-wp`).textContent='';$(`c${i}-bar`).style.width='0';ps.push(null);return}
+    const gap=us.reduce((a,b)=>a+b,0)/us.length-th.reduce((a,b)=>a+b,0)/th.length,p=courtWin(gap,third),sh=realShare(gap);
+    const sc=typicalScore(sh>=.5?sh:1-sh).map(x=>sh>=.5?x.join('-'):x[1]+'-'+x[0]).join(' ');
+    $(`c${i}-score`).textContent=Math.abs(gap)<.02?'Toss-up':sc;$(`c${i}-wp`).textContent=pct(p);$(`c${i}-bar`).style.width=(p*100).toFixed(1)+'%';ps.push(p);
+  });
+  const N=L.length,need=Math.floor(N/2)+1;
+  $('t-eyebrow').textContent=`Team match · ${N} courts · first to ${need}`;
+  if(ps.includes(null)){$('tb-win').textContent='—';$('tb-likely').textContent='';$('t-win').textContent='—';$('t-exp').textContent='—';$('t-likely').textContent='—';$('t-dist').innerHTML='';$('t-verdict').textContent='Fill in every court to see the team forecast.';return}
+  // chance of winning exactly k courts (courts treated as independent)
+  let D=[1];for(const p of ps){const E=new Array(D.length+1).fill(0);D.forEach((q,k)=>{E[k]+=q*(1-p);E[k+1]+=q*p});D=E}
+  const win=D.slice(need).reduce((a,b)=>a+b,0),exp=ps.reduce((a,b)=>a+b,0);
+  let best=0;D.forEach((q,k)=>{if(q>D[best])best=k});
+  $('t-win').textContent=pct(win);$('t-exp').textContent=`${exp.toFixed(1)} of ${N}`;$('t-likely').textContent=`${best>=need?'Win':'Lose'} ${best}-${N-best}`;
+  const mx=Math.max(...D);
+  $('t-dist').innerHTML=D.map((q,k)=>[k,q]).reverse().map(([k,q])=>`<div class="r${k>=need?'':' l'}"><b>${k}-${N-k}</b><div class="track"><div class="fill" style="width:${(q/mx*100).toFixed(1)}%"></div></div><span>${q<.005?'<1%':pct(q)}</span></div>`).join('');
+  $('tb-win').textContent=pct(win);$('tb-likely').textContent=`${best>=need?'Win':'Lose'} ${best}-${N-best}`;
+  const swing=ps.map((p,i)=>({i,p})).sort((a,b)=>Math.abs(a.p-.5)-Math.abs(b.p-.5))[0];
+  $('t-verdict').textContent=`Closest court: ${courtLabel(L[swing.i],swing.i,L)} (${pct(swing.p)}). Results show your courts won first.`;
+}
+$('courts').addEventListener('click',e=>{const b=e.target.closest('button[data-t]');if(!b)return;readCourts();
+  const c=TEAM.lineups[TEAM.n][+b.dataset.c];if(c.t===b.dataset.t)return;c.t=b.dataset.t;
+  if(c.t==='D'){c.us[1]=c.us[1]??c.us[0];c.them[1]=c.them[1]??c.them[0]}buildCourts()});
+$('tf').addEventListener('input',()=>{readCourts();renderTeam()});$('tf').addEventListener('submit',e=>e.preventDefault());
+$('t-3').onclick=()=>{readCourts();TEAM.n=3;buildCourts()};$('t-5').onclick=()=>{readCourts();TEAM.n=5;buildCourts()};
+function setView(v){$('view-one').hidden=v!=='one';$('view-team').hidden=v!=='team';if(v!=='team')$('tbar').classList.add('away');
+  $('v-one').setAttribute('aria-pressed',v==='one');$('v-team').setAttribute('aria-pressed',v==='team');
+  if(v==='team'&&!$('courts').children.length)buildCourts();if(v==='one')render();}
+$('v-one').onclick=()=>setView('one');$('v-team').onclick=()=>setView('team');
+// phone: show a pinned team summary once the main summary scrolls out of view
+if('IntersectionObserver' in window)new IntersectionObserver(es=>es.forEach(e=>$('tbar').classList.toggle('away',e.isIntersecting||$('view-team').hidden)))
+  .observe(document.querySelector('#view-team .board'));
+
+render();
+if(location.hash==='#team')setView('team');
+let rz;addEventListener('resize',()=>{clearTimeout(rz);rz=setTimeout(render,150)});
+</script>
